@@ -1,5 +1,6 @@
 <?php
 // (c)2012 Rackspace Hosting. See COPYING for license.
+// This script will create a user specified number of CentOS 6.3 servers in the DFW datacenter
 
 require('rackspace.inc');
 
