@@ -35,7 +35,7 @@ for ($i=1; $i<=$num_servers; $i++) {
     	'image' => $compute->ImageList(TRUE,array('name'=>'CentOS 6.3'))->Next()
     	));
 	$server->WaitFor('ACTIVE', 300, 'progress');
-	print "Done\n";
+	print "\nDone\n";
 	print $servername . " Info\n";
 	print "IP Address: " . $server->accessIPv4 . "\n";
 	print "Root Password: " . $server->adminPass . "\n";
@@ -43,6 +43,6 @@ for ($i=1; $i<=$num_servers; $i++) {
 
 // callback function for WaitFor
 function progress($server) {
-    printf("%s:%-8s %3d%% complete\n",
+    printf("%s:%-8s %3d%% complete\r",
         $server->name, $server->status, $server->progress);
 }
