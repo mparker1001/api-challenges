@@ -1,11 +1,17 @@
+#!/usr/bin/php
 <?php
 // (c)2012 Rackspace Hosting. See COPYING for license.
-// This script will create a user specified number of CentOS 6.3 servers in the DFW datacenter
+// This script will create a user specified number of CentOS 6.3 servers in the data center as configured in auth.ini
 
 require('rackspace.inc');
 
-// Get authentication credentials in auth.inc.php file. Credentials are set through the variables $username, $tenant, and $apiKey
-include('auth.inc.php');
+// Get credentials and configuration from auth.ini
+define('INIFILE', 'auth.ini');
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
 
 // Set number of servers to build
 $num_servers = "3";
@@ -13,19 +19,21 @@ $num_servers = "3";
 // Set server name prefix
 $name_prefix = "web";
 
+//Authenticate
 print "Authenticating...\n";
-
 $conn = new OpenCloud\Rackspace(
-     'https://identity.api.rackspacecloud.com/v2.0',
+     $ini['Identity']['url'],
      array(
-         'username' => $username,
-         'tenantName' => $tenant,
-         'apiKey' => $apiKey
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
      ));
 
-$compute = $conn->Compute('cloudServersOpenStack', 'DFW');
+//Create objects
+$compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
 $server = $compute->Server();
 
+//Create servers
 print "Creating the servers...\n";
 for ($i=1; $i<=$num_servers; $i++) {
 	$servername = $name_prefix . $i;

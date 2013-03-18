@@ -1,3 +1,4 @@
+#!/usr/bin/php
 <?php
 // (c)2012 Rackspace Hosting. See COPYING for license.
 // This script will create a clone of the server as specified in the $server_id variable
@@ -5,8 +6,13 @@
 //Include necessary libraries
 require('rackspace.inc');
 
-// Get authentication credentials in auth.inc.php file. Credentials are set through the variables $username, $tenant, and $apiKey
-include('auth.inc.php');
+// Get credentials and configuration from auth.ini
+define('INIFILE', 'auth.ini');
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
 
 //Set server ID (uuid) that you want to use for creating a clone
 $server_id = '80128595-d6be-4c5c-ab60-1addbd218534';
@@ -17,17 +23,17 @@ $image_timeout = 1800;
 //Set suffix of server name clone. Server clone name will be format of <origservername>-$suffix.
 $clone_suffix = "clone";
 
+//Authenticate
 print "Authenticating...\n";
-
 $conn = new OpenCloud\Rackspace(
-     'https://identity.api.rackspacecloud.com/v2.0',
+     $ini['Identity']['url'],
      array(
-         'username' => $username,
-         'tenantName' => $tenant,
-         'apiKey' => $apiKey
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
      ));
 
-$compute = $conn->Compute('cloudServersOpenStack', 'DFW');
+$compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
 $server = $compute->Server($server_id);
 $server_name = $server->name;
 $flavor_id = $server->flavor;
