@@ -1,0 +1,12 @@
+#!/usr/bin/php
+<?php
+$fqdn = $argv[1];
+$pos = strpos($fqdn, ".co.");
+if ($pos === false) {
+	preg_match ( "/[^\.\/]+\.[^\.\/]+$/", $fqdn, $domain);
+}
+else {
+	preg_match ( "/[^\.\/]+\.co\.[^\.\/]+$/", $fqdn, $domain);
+}
+echo $domain[0] . "\n";
+?>
