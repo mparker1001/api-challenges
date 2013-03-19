@@ -1,5 +1,7 @@
 #!/usr/bin/php
 <?php
+// This script accepts a directory as an argument as well as a container name. The script uploads
+// the contents of the specified directory to the container (or creates it if it doesn't exist).
 
 // Check for arguments. If they don't exist, then stop the script
 if (@$argv[1] == "" || @$argv[2] == "") {
