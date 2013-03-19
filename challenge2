@@ -1,8 +1,9 @@
 #!/usr/bin/php
 <?php
+// This script clones a server (takes an image and deploys the image as a new server).
 
 // Set server ID (uuid) that you want to use for creating a clone
-$server_id = '80128595-d6be-4c5c-ab60-1addbd218534';
+$server_id = '<server_uuid>';
 
 // Set image creation timeout in seconds. If the image creation takes longer than this value then the script will abort
 $image_timeout = 1800;
