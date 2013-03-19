@@ -1,8 +1,19 @@
 #!/usr/bin/php
 <?php
-// (c)2012 Rackspace Hosting. See COPYING for license.
-// This script will create a user specified number of CentOS 6.3 servers in the data center as configured in auth.ini.
 
+// Set number of servers to build
+$num_servers = "3";
+
+// Set server name prefix
+$name_prefix = "web";
+
+// Callback function for WaitFor
+function progress($server) {
+    printf("%s:%-8s %3d%% complete\r",
+        $server->name, $server->status, $server->progress);
+}
+
+// Include necessary libraries
 require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
@@ -14,13 +25,7 @@ if (!$ini) {
     exit;
 }
 
-// Set number of servers to build
-$num_servers = "3";
-
-// Set server name prefix
-$name_prefix = "web";
-
-//Authenticate
+// Authenticate
 print "Authenticating...\n";
 $conn = new OpenCloud\Rackspace(
      $ini['Identity']['url'],
@@ -30,11 +35,11 @@ $conn = new OpenCloud\Rackspace(
          'apiKey' => $ini['Identity']['apiKey']
      ));
 
-//Create objects
+// Create objects
 $compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
 $server = $compute->Server();
 
-//Create servers
+// Loop and create servers
 print "Creating the servers...\n";
 for ($i=1; $i<=$num_servers; $i++) {
 	$servername = $name_prefix . $i;
@@ -45,15 +50,9 @@ for ($i=1; $i<=$num_servers; $i++) {
     	));
 	$server->WaitFor('ACTIVE', 300, 'progress');
 	print "\nDone\n";
-	//Pausing for 10 seconds to see if this resolves IP address being blank
-	sleep(10);
+	//May need to pause for 10 seconds to get better success with IP address displaying properly. Uncomment line below if IP address is consistently blank.
+	//sleep(10);
 	print $servername . " Info\n";
 	print "IP Address: " . $server->accessIPv4 . "\n";
 	print "Root Password: " . $server->adminPass . "\n";
-}
-
-// callback function for WaitFor
-function progress($server) {
-    printf("%s:%-8s %3d%% complete\r",
-        $server->name, $server->status, $server->progress);
 }
