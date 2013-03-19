@@ -2,7 +2,7 @@
 <?php
 
 //Check for arguments. If they don't exist, then stop the script
-if ($argv[1] == "" || $argv[2] == "") {
+if (@$argv[1] == "" || @$argv[2] == "") {
 	die("Usage: challenge3 <local_directory> <container_name>\n");
 }
 
@@ -22,7 +22,7 @@ if (!$ini) {
 }
 
 //Authenticate
-print "Authenticating...\n";
+print "Authenticating... ";
 $conn = new OpenCloud\Rackspace(
      $ini['Identity']['url'],
      array(
@@ -30,6 +30,7 @@ $conn = new OpenCloud\Rackspace(
          'tenantName' => $ini['Identity']['tenant'],
          'apiKey' => $ini['Identity']['apiKey'],
      ));
+echo "Done!\n";
 
 // create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
 $objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
