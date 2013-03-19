@@ -1,0 +1,74 @@
+#!/usr/bin/php
+<?php
+
+//Check for arguments. If they don't exist, then stop the script
+if ($argv[1] == "" || $argv[2] == "") {
+	die("Usage: challenge3 <local_directory> <container_name>\n");
+}
+
+$upload_path = $argv[1];
+$container_name = $argv[2];
+
+//Include required libraries
+require('rackspace.inc');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+//Authenticate
+print "Authenticating...\n";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey'],
+     ));
+
+// create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
+$objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
+
+//Check to see if container already exists
+$conlist = $objstore->ContainerList(array('prefix'=>$container_name));
+$found = FALSE;
+while($container = $conlist->Next()) {
+	if ( $container->name == $container_name ) {
+		echo "Container '" . $container->name . "' found. Skipping container creation...\n";
+		$found = TRUE;
+		break;
+	}
+}
+
+//If container was not found, then create it
+if ($found === FALSE) {
+	echo "Container not found. Creating container '" . $container_name . "'\n";
+	$container = $objstore->Container();
+	$container->Create($container_name);
+}
+
+//Loop over files in local directory and upload them
+if ($handle = @opendir($upload_path)) {
+    echo "Uploading files in " . $upload_path . " to container '" . $container_name . "'...\n";
+    while (false !== ($entry = readdir($handle))) {
+	$filefullpath = $upload_path . "/" .$entry;
+        if ($entry != "." && $entry != ".." && is_file($filefullpath)) {
+	    $obj = $container->DataObject();
+	    $obj->Create(array('name' => $entry),$filefullpath);
+            echo "$entry uploaded\n";
+        }
+    }
+    closedir($handle);
+}
+else {  //If directory not found, then stop script and report error
+    die("Invalid Directory\n");
+}
+
+echo "\nUpload complete!\n";
+
+?>
