@@ -1,0 +1,73 @@
+#!/usr/bin/php
+<?php
+// This script creates a Cloud Database instance, a single database within the instance,
+// and a user associated with the database
+
+// Set database instance flavor ID
+$db_flavor = 1;
+
+// Set database volume size (in GB)
+$db_volume = 1;
+
+// Set instance name
+$instance_name = 'myinstance';
+
+// Set database name
+$db_name = 'mydb';
+
+// Set user credentials
+$db_username = 'myusername';
+$db_password = 'MyPass4MyDB!';
+
+// Include function to show instance status
+function showstatus($item) {
+    printf("\tStatus: %s\n", $item->status());
+}
+
+// Include necessary libraries
+require('rackspace.php');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+// Authenticate
+print "Authenticating...\n";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
+     ));
+
+// Connect to the compute service
+print "Connecting...\n";
+$dbservice = $conn->DbService($ini['Compute-DB']['serviceName'], $ini['Compute-DB']['region']);
+
+// Create an instance
+print "Creating new instance, '" . $instance_name . "'...\n";
+$instance = $dbservice->Instance();
+$instance->flavor = $dbservice->Flavor($db_flavor);
+$instance->volume->size = $db_volume;
+$instance->Create(array('name'=>$instance_name));
+$instance->WaitFor('ACTIVE', 300, 'showstatus');
+
+// Create a database
+print "Creating database '" . $db_name . "'...\n";
+$db = $instance->Database($db_name);
+$db->Create(array('character_set'=>'utf8'));
+
+// Create a user
+print "Creating user'" . $db_username . "'...\n";
+$user = $instance->User($db_username);
+$user->AddDatabase($db_name);
+$user->Create(array('password'=>$db_password));
+
+echo "Creation Complete";
+?>
