@@ -3,7 +3,7 @@
 // (c)2012 Rackspace Hosting. See COPYING for license.
 // This script will create a user specified number of CentOS 6.3 servers in the data center as configured in auth.ini.
 
-require('rackspace.inc');
+require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
 $inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
@@ -45,6 +45,8 @@ for ($i=1; $i<=$num_servers; $i++) {
     	));
 	$server->WaitFor('ACTIVE', 300, 'progress');
 	print "\nDone\n";
+	//Pausing for 10 seconds to see if this resolves IP address being blank
+	sleep(10);
 	print $servername . " Info\n";
 	print "IP Address: " . $server->accessIPv4 . "\n";
 	print "Root Password: " . $server->adminPass . "\n";

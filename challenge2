@@ -4,7 +4,7 @@
 // This script will create a clone of the server as specified in the $server_id variable
 
 //Include necessary libraries
-require('rackspace.inc');
+require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
 $inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";

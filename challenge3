@@ -10,7 +10,7 @@ $upload_path = $argv[1];
 $container_name = $argv[2];
 
 //Include required libraries
-require('rackspace.inc');
+require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
 $inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
@@ -50,7 +50,7 @@ while($container = $conlist->Next()) {
 if ($found === FALSE) {
 	echo "Container not found. Creating container '" . $container_name . "'\n";
 	$container = $objstore->Container();
-	$container->Create($container_name);
+	$container->Create(array('name'=>$container_name));
 }
 
 //Loop over files in local directory and upload them
