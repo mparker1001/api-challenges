@@ -1,7 +1,7 @@
 #!/usr/bin/php
 <?php
 
-//Check for arguments. If they don't exist, then stop the script
+// Check for arguments. If they don't exist, then stop the script
 if (@$argv[1] == "" || @$argv[2] == "") {
 	die("Usage: challenge3 <local_directory> <container_name>\n");
 }
@@ -9,7 +9,7 @@ if (@$argv[1] == "" || @$argv[2] == "") {
 $upload_path = $argv[1];
 $container_name = $argv[2];
 
-//Include required libraries
+// Include required libraries
 require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
@@ -21,7 +21,7 @@ if (!$ini) {
     exit;
 }
 
-//Authenticate
+// Authenticate
 print "Authenticating... ";
 $conn = new OpenCloud\Rackspace(
      $ini['Identity']['url'],
@@ -32,10 +32,10 @@ $conn = new OpenCloud\Rackspace(
      ));
 echo "Done!\n";
 
-// create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
+// Create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
 $objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
 
-//Check to see if container already exists
+// Check to see if container already exists
 $conlist = $objstore->ContainerList(array('prefix'=>$container_name));
 $found = FALSE;
 while($container = $conlist->Next()) {
@@ -46,14 +46,14 @@ while($container = $conlist->Next()) {
 	}
 }
 
-//If container was not found, then create it
+// If container was not found, then create it
 if ($found === FALSE) {
 	echo "Container not found. Creating container '" . $container_name . "'\n";
 	$container = $objstore->Container();
 	$container->Create(array('name'=>$container_name));
 }
 
-//Loop over files in local directory and upload them
+// Loop over files in local directory and upload them
 if ($handle = @opendir($upload_path)) {
     echo "Uploading files in " . $upload_path . " to container '" . $container_name . "'...\n";
     while (false !== ($entry = readdir($handle))) {
@@ -66,10 +66,9 @@ if ($handle = @opendir($upload_path)) {
     }
     closedir($handle);
 }
-else {  //If directory not found, then stop script and report error
+else {  //If local directory is not found, then stop script and report error
     die("Invalid Directory\n");
 }
 
 echo "\nUpload complete!\n";
-
 ?>
