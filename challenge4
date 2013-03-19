@@ -1,5 +1,20 @@
 #!/usr/bin/php
 <?php
+
+//Check for arguments. If they don't exist, then stop the script
+if (@$argv[1] == "" || @$argv[2] == "") {
+        die("Usage: challenge4 <fqdn> <ip_address>>\n");
+}
+
+//Validate IP address
+if (!filter_var($argv[2], FILTER_VALIDATE_IP)) {
+   die("Not a valid IP address!\n");
+}
+else { 
+	$ip_address = $argv[2];
+}
+
+//Pull domain name out of fqdn
 $fqdn = $argv[1];
 $pos = strpos($fqdn, ".co.");
 if ($pos === false) {
@@ -8,5 +23,78 @@ if ($pos === false) {
 else {
 	preg_match ( "/[^\.\/]+\.co\.[^\.\/]+$/", $fqdn, $domain);
 }
-echo $domain[0] . "\n";
+$domain_name =  $domain[0];
+
+//Include required libraries
+require('rackspace.php');
+
+//Include function to show record creation status
+function showme($obj) {
+        printf("%s %s %s\n", date('H:i:s'), $obj->Status(), $obj->Name());
+        if ($obj->Status() == 'ERROR') {
+                printf("\tError code [%d] message [%s]\n\tDetails: %s\n",
+                $obj->error->code, $obj->error->message, $obj->error->details);
+        }
+        else if ($obj->Status() == 'COMPLETED') {
+                printf("Done\n");
+        }
+}
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+//Authenticate
+print "Authenticating... ";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey'],
+     ));
+echo "Done!\n";
+
+//Create array for domain
+$dns = $conn->DNS();
+$dlist = $dns->DomainList(array('name'=>$domain_name));
+
+//If the domain is not found, create it and add FQDN record
+if ($dlist->Size() == 0) {
+	$domain = $dns->Domain(array(
+		'name' => $domain_name,
+		'ttl' => 3600,
+		'emailAddress' => 'ipadmin@stabletransit.com'));
+	echo "Domain '" . $domain_name . "' not found. DNS zone will be created.\n";
+
+	$domain->AddRecord($domain->Record(array(
+		'type' => 'A',
+		'name' => $fqdn,
+		'ttl' => 3600,
+		'data' => $ip_address)));
+
+        echo "Adding A Record: " . $fqdn . " -> " . $ip_address . "\n";
+
+	$resp = $domain->Create();
+}
+else {
+	//Otherwise echo a message that the domain is found and add FQDN record
+	echo "Domain '" . $domain_name . "' found.\n";
+	echo "Adding A Record: " . $fqdn . " -> " . $ip_address . "\n";
+	$domain = $dlist->Next();
+	$new_record = $domain->Record();
+	$resp = $new_record->Create(array(
+                'type' => 'A',
+                'name' => $fqdn,
+                'ttl' => 3600,
+                'data' => $ip_address));
+}
+
+$resp->WaitFor("COMPLETED", 300, 'showme', 1);
+
 ?>
