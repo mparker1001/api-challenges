@@ -1,12 +1,14 @@
 #!/usr/bin/php
 <?php
+// This script uses Cloud DNS to create a new A record when passed a FQDN and IP address as arguments.
+// If the domain does not exist, it is created.
 
-//Check for arguments. If they don't exist, then stop the script
+// Check for arguments. If they don't exist, then stop the script
 if (@$argv[1] == "" || @$argv[2] == "") {
         die("Usage: challenge4 <fqdn> <ip_address>>\n");
 }
 
-//Validate IP address
+// Validate IP address
 if (!filter_var($argv[2], FILTER_VALIDATE_IP)) {
    die("Not a valid IP address!\n");
 }
@@ -14,7 +16,7 @@ else {
 	$ip_address = $argv[2];
 }
 
-//Pull domain name out of fqdn
+// Pull domain name out of fqdn
 $fqdn = $argv[1];
 $pos = strpos($fqdn, ".co.");
 if ($pos === false) {
@@ -25,10 +27,7 @@ else {
 }
 $domain_name =  $domain[0];
 
-//Include required libraries
-require('rackspace.php');
-
-//Include function to show record creation status
+// Include function to show record creation status
 function showme($obj) {
         printf("%s %s %s\n", date('H:i:s'), $obj->Status(), $obj->Name());
         if ($obj->Status() == 'ERROR') {
@@ -40,6 +39,9 @@ function showme($obj) {
         }
 }
 
+// Include required libraries
+require('rackspace.php');
+
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
 $inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
 define('INIFILE', $inifile);
@@ -49,7 +51,7 @@ if (!$ini) {
     exit;
 }
 
-//Authenticate
+// Authenticate
 print "Authenticating... ";
 $conn = new OpenCloud\Rackspace(
      $ini['Identity']['url'],
@@ -60,11 +62,11 @@ $conn = new OpenCloud\Rackspace(
      ));
 echo "Done!\n";
 
-//Create array for domain
+// Create array for domain
 $dns = $conn->DNS();
 $dlist = $dns->DomainList(array('name'=>$domain_name));
 
-//If the domain is not found, create it and add FQDN record
+// If the domain is not found, create it and add FQDN record
 if ($dlist->Size() == 0) {
 	$domain = $dns->Domain(array(
 		'name' => $domain_name,
@@ -96,5 +98,4 @@ else {
 }
 
 $resp->WaitFor("COMPLETED", 300, 'showme', 1);
-
 ?>
