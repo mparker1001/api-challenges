@@ -50,8 +50,8 @@ for ($i=1; $i<=$num_servers; $i++) {
     	));
 	$server->WaitFor('ACTIVE', 300, 'progress');
 	print "\nDone\n";
-	//May need to pause for 10 seconds to get better success with IP address displaying properly. Uncomment line below if IP address is consistently blank.
-	//sleep(10);
+	//Pause 10 seconds to allow metadata to catch up
+	sleep(10);
 	print $servername . " Info\n";
 	print "IP Address: " . $server->accessIPv4 . "\n";
 	print "Root Password: " . $server->adminPass . "\n";
