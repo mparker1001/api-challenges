@@ -1,13 +1,31 @@
 #!/usr/bin/php
 <?php
-// Thia script creates a CDN-enabled container in Cloud Files
+// This script creates a Cloud Database instance, a single database within the instance,
+// and a user associated with the database
+
 
 // Set database instance flavor ID
 $db_flavor = 1;
-// Set container name
-$container_name = "foo2";
 
-// Include required libraries
+// Set database volume size (in GB)
+$db_volume = 1;
+
+// Set instance name
+$instance_name = 'myinstance';
+
+// Set database name
+$db_name = 'mydb';
+
+// Set user credentials
+$db_username = 'myusername';
+$db_password = 'MyPass4MyDB!';
+
+// Include function to show instance status
+function showstatus($item) {
+    printf("\tStatus: %s\n", $item->status());
+}
+
+// Include necessary libraries
 require('rackspace.php');
 
 // Get credentials and configuration from ~/.rackspace_cloud_credentials
@@ -20,44 +38,37 @@ if (!$ini) {
 }
 
 // Authenticate
-print "Authenticating... ";
+print "Authenticating...\n";
 $conn = new OpenCloud\Rackspace(
      $ini['Identity']['url'],
      array(
          'username' => $ini['Identity']['username'],
          'tenantName' => $ini['Identity']['tenant'],
-         'apiKey' => $ini['Identity']['apiKey'],
+         'apiKey' => $ini['Identity']['apiKey']
      ));
-echo "Done!\n";
 
-// Create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
-$objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
+// Connect to the compute service
+print "Connecting...\n";
+$dbservice = $conn->DbService($ini['Compute-DB']['serviceName'], $ini['Compute-DB']['region']);
 
-// Check to see if container already exists
-$conlist = $objstore->ContainerList(array('prefix'=>$container_name));
-$found = FALSE;
-while($container = $conlist->Next()) {
-	if ( $container->name == $container_name ) {
-		echo "Container '" . $container->name . "' found. Skipping container creation...\n";
-		$found = TRUE;
-		break;
-	}
-}
+// Create an instance
+print "Creating new instance, '" . $instance_name . "'...\n";
+$instance = $dbservice->Instance();
+$instance->flavor = $dbservice->Flavor($db_flavor);
+$instance->volume->size = $db_volume;
+$instance->Create(array('name'=>$instance_name));
+$instance->WaitFor('ACTIVE', 300, 'showstatus');
 
-// If container was not found, then create it
-if ($found === FALSE) {
-	echo "Container not found. Creating container '" . $container_name . "'\n";
-	$container = $objstore->Container();
-	$container->Create(array('name'=>$container_name));
-}
+// Create a database
+print "Creating database '" . $db_name . "'...\n";
+$db = $instance->Database($db_name);
+$db->Create(array('character_set'=>'utf8'));
 
-// publish it to the CDN
-print("Publishing to CDN...\n");
-$cdnversion = $container->PublishToCDN();
+// Create a user
+print "Creating user'" . $db_username . "'...\n";
+$user = $instance->User($db_username);
+$user->AddDatabase($db_name);
+$user->Create(array('password'=>$db_password));
 
-printf("Container: %s\n", $container->name);
-printf(" URL: %s\n", $container->Url());
-printf(" CDN URL: %s\n", $container->CDNUrl());
-
-
+echo "Creation Complete";
 ?>
