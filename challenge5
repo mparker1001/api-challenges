@@ -3,7 +3,6 @@
 // This script creates a Cloud Database instance, a single database within the instance,
 // and a user associated with the database
 
-
 // Set database instance flavor ID
 $db_flavor = 1;
 
