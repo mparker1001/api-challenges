@@ -1,0 +1,61 @@
+#!/usr/bin/php
+<?php
+// Thia script creates a CDN-enabled container in Cloud Files
+
+// Set container name
+$container_name = "foo2";
+
+// Include required libraries
+require('rackspace.php');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+// Authenticate
+print "Authenticating... ";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey'],
+     ));
+echo "Done!\n";
+
+// Create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
+$objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
+
+// Check to see if container already exists
+$conlist = $objstore->ContainerList(array('prefix'=>$container_name));
+$found = FALSE;
+while($container = $conlist->Next()) {
+	if ( $container->name == $container_name ) {
+		echo "Container '" . $container->name . "' found. Skipping container creation...\n";
+		$found = TRUE;
+		break;
+	}
+}
+
+// If container was not found, then create it
+if ($found === FALSE) {
+	echo "Container not found. Creating container '" . $container_name . "'\n";
+	$container = $objstore->Container();
+	$container->Create(array('name'=>$container_name));
+}
+
+// publish it to the CDN
+print("Publishing to CDN...\n");
+$cdnversion = $container->PublishToCDN();
+
+printf("Container: %s\n", $container->name);
+printf(" URL: %s\n", $container->Url());
+printf(" CDN URL: %s\n", $container->CDNUrl());
+
+
+?>
