@@ -1,0 +1,109 @@
+#!/usr/bin/php
+<?php
+//This script will create 2 Cloud Servers and add them as nodes to a new Cloud Load Balancer.
+
+// Set number of servers to build
+$num_servers = "2";
+
+// Set server name prefix
+$name_prefix = "web";
+
+// Set load balancer name
+$lb_name = "mylb01";
+
+// Set load balancer port
+$lb_port = "80";
+
+// Set protocol
+$lb_protocol = "HTTP";
+
+// Set timeout for building cloud servers and waiting for IP address info (in seconds)
+$timeout = "600";
+
+// Callback function for WaitFor for cloud servers
+function progress($server) {
+    printf("%s:%-8s %3d%% complete\r",
+        $server->name, $server->status, $server->progress);
+}
+
+// Info function for the lbprogress function
+function info($msg,$p1=NULL,$p2=NULL,$p3=NULL) {
+    printf(" %s\r", sprintf($msg,$p1,$p2,$p3));
+}
+
+// Callback function for WaitFor for cloud load balancers
+function lbprogress($obj) {
+	info('...status: %s', $obj->Status());
+}
+
+// Include necessary libraries
+require('rackspace.php');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+// Authenticate
+print "Authenticating...\n";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
+     ));
+
+// Create objects
+$compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
+$server = $compute->Server();
+
+// Loop and create servers
+print "Creating the servers...\n";
+for ($i=1; $i<=$num_servers; $i++) {
+	$servername = $name_prefix . $i;
+	$server->Create(array(
+    	'name' => $servername,
+    	'flavor' => $compute->Flavor(2),
+    	'image' => $compute->ImageList(TRUE,array('name'=>'CentOS 6.3'))->Next()
+    	));
+	$server->WaitFor('ACTIVE', $timeout, 'progress');
+	print "\nDone\n";
+	$elapsedtime = 0;
+	$server_id = $server->id;
+	$root_pw = $server->adminPass;
+	while ( $server->accessIPv4 == "" ) {
+		$server = $compute->Server($server_id);
+		echo "Waiting for IP address info...\n";
+		sleep(30);
+		$elapsedtime = $elapsedtime + 30;
+		if ( $elapsedtime >= $timeout ) {
+			die("Timeout exceeded. Aborting.\n");
+		}
+	}
+	print $servername . " Info\n";
+	print "IP Address: " . $server->accessIPv4 . "\n";
+	$ip_arr[$i] = $server->accessIPv4;
+	print "Root Password: " . $root_pw . "\n";
+}
+
+// Create load balancer
+echo "Creating Load Balancer...\n";
+$lbservice = $conn->LoadBalancerService($ini['LoadBalancers']['serviceName'], $ini['LoadBalancers']['region']);
+$lb = $lbservice->LoadBalancer();
+$lb->AddVirtualIp('public');
+for ($i=1; $i<=$num_servers; $i++) {
+	$lb->AddNode($ip_arr[$i], $lb_port);
+}
+$response = $lb->Create(array(
+    'name' => $lb_name,
+    'protocol' => $lb_protocol,
+    'port' => $lb_port));
+$lb->WaitFor('ACTIVE', 600, 'lbprogress');
+
+// Display load balancer properties
+echo "\nComplete!\nLoad Balancer ID: " . $lb->id . "\nName: " . $lb->name . "\n";
