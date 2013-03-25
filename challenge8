@@ -99,9 +99,10 @@ print("Creating CDN object '".$file_index."' into container and setting it as in
 $object = $container->DataObject();
 $object->Create(array('name'=>$file_index,'content_type'=>'text/html'), $file_index);
 
-// Set the index for the CFN container
+// Set the index for the CDN container
 $container->CreateStaticSite($file_index);
 
+// Display URL of public CDN container
 printf("CDN Public URL: %s\n", $container->PublicURL());
 $cdn_hostname = parse_url($container->PublicURL(),PHP_URL_HOST);
 
