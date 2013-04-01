@@ -1,0 +1,143 @@
+#!/usr/bin/php
+<?php
+// This script will accept the arguments FQDN, image, and flavor. Then  it creates a server 
+// of the specified image and flavor with the same name as the fqdn, and creates a DNS entry
+// for the fqdn pointing to the server's public IP
+
+// Set timeout (in seconds) for IP address info
+$timeout = 300;
+
+// Check for arguments. If they don't exist, then stop the script
+if (@$argv[1] == "" || @$argv[2] == "" || @$argv[3] == "") {
+        die("Usage: challenge9 <fqdn> <image_name> <flavor>\n");
+}
+
+// Set the arguments as variables
+$fqdn = $argv[1];
+$image_name = $argv[2];
+$flavor_id = $argv[3];
+
+// Pull domain name out of fqdn
+$pos = strpos($fqdn, ".co.");
+if ($pos === false) {
+        preg_match ( "/[^\.\/]+\.[^\.\/]+$/", $fqdn, $domain);
+}
+else {
+        preg_match ( "/[^\.\/]+\.co\.[^\.\/]+$/", $fqdn, $domain);
+}
+$domain_name =  $domain[0];
+
+// Include function to show record creation status
+function showme($obj) {
+        printf("%s %s %s\n", date('H:i:s'), $obj->Status(), $obj->Name());
+        if ($obj->Status() == 'ERROR') {
+                printf("\tError code [%d] message [%s]\n\tDetails: %s\n",
+                $obj->error->code, $obj->error->message, $obj->error->details);
+        }
+        else if ($obj->Status() == 'COMPLETED') {
+                printf("Done\n");
+        }
+}
+
+// Callback function for WaitFor
+function progress($server) {
+    printf("%s:%-8s %3d%% complete\r",
+        $server->name, $server->status, $server->progress);
+}
+
+// Include necessary libraries
+require('rackspace.php');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+// Authenticate
+print "Authenticating...\n";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
+     ));
+
+// Create objects
+$compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
+$server = $compute->Server();
+
+// Create server
+print "Creating the server...\n";
+$server->Create(array(
+	'name' => $fqdn,
+	'flavor' => $compute->Flavor($flavor_id),
+	'image' => $compute->ImageList(TRUE,array('name'=>$image_name))->Next()
+));
+$server->WaitFor('ACTIVE', 300, 'progress');
+
+print "\nDone\n";
+
+// Loop and wait until IP address information is visible
+$elapsedtime = 0;
+$server_id = $server->id;
+$root_pw = $server->adminPass;
+while ( $server->accessIPv4 == "" ) {
+        $server = $compute->Server($server_id);
+        echo "Waiting for IP address info...\n";
+        sleep(30);
+        $elapsedtime = $elapsedtime + 30;
+        if ( $elapsedtime >= $timeout ) {
+                die("Timeout exceeded. Aborting.\n");
+        }
+}
+
+// Display server details
+print $fqdn . " Info\n";
+$ip_address = $server->accessIPv4;
+print "IP Address: " . $ip_address . "\n";
+print "Root Password: " . $root_pw . "\n";
+
+echo "Creating DNS record...\n";
+
+// Create array for domain
+$dns = $conn->DNS();
+$dlist = $dns->DomainList(array('name'=>$domain_name));
+
+// If the domain is not found, create it and add FQDN record
+if ($dlist->Size() == 0) {
+        $domain = $dns->Domain(array(
+                'name' => $domain_name,
+                'ttl' => 3600,
+                'emailAddress' => 'ipadmin@stabletransit.com'));
+        echo "Domain '" . $domain_name . "' not found. DNS zone will be created.\n";
+
+        $domain->AddRecord($domain->Record(array(
+                'type' => 'A',
+                'name' => $fqdn,
+                'ttl' => 3600,
+                'data' => $ip_address)));
+
+        echo "Adding A Record: " . $fqdn . " -> " . $ip_address . "\n";
+
+        $resp = $domain->Create();
+}
+else {
+        //Otherwise echo a message that the domain is found and add FQDN record
+        echo "Domain '" . $domain_name . "' found.\n";
+        echo "Adding A Record: " . $fqdn . " -> " . $ip_address . "\n";
+        $domain = $dlist->Next();
+        $new_record = $domain->Record();
+        $resp = $new_record->Create(array(
+                'type' => 'A',
+                'name' => $fqdn,
+                'ttl' => 3600,
+                'data' => $ip_address));
+}
+
+$resp->WaitFor("COMPLETED", 300, 'showme', 1);
+?>
