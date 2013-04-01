@@ -269,7 +269,7 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
 $result = curl_exec($ch);
 
 // --- Create DNS record ---
-echo "Create DNS record...\n";
+echo "Creating DNS record...\n";
 
 // Create array for domain
 $dns = $conn->DNS();
