@@ -1,0 +1,341 @@
+#!/usr/bin/php
+<?php
+// This script will
+//- Create 2 servers, supplying a ssh key to be installed at /root/.ssh/authorized_keys.
+//- Create a load balancer
+//- Add the 2 new servers to the LB
+//- Set up LB monitor and custom error page. 
+//- Create a DNS record based on a FQDN for the LB VIP. 
+//- Write the error page html to a file in cloud files for backup.
+
+// ---Begin user variables section---
+
+// Set number of servers to build
+$num_servers = "2";
+
+// Set server name prefix
+$name_prefix = "myweb";
+
+// Set load balancer name
+$lb_name = "mylb01";
+
+// Set load balancer port
+$lb_port = "80";
+
+// Set protocol
+$lb_protocol = "HTTP";
+
+// Set timeout for building cloud servers and waiting for IP address info (in seconds)
+$timeout = "600";
+
+// Set name of local keyfile
+$key_file = "my.key";
+
+// Set path of remote server where key file should exist as path/to/authorized_keys
+$key_path = "/root/.ssh/";
+
+// Set file containing error page
+$error_page = 'errorpage.html';
+
+// Set host name for load balancer vip
+$fqdn = 'myhostname2.mydomain1902323-112.com';
+
+// Set cloud files container to store error page
+$container_name = 'mybackup1';
+ 
+// ---End user variables section---
+
+// Pull domain name out of fqdn
+$pos = strpos($fqdn, ".co.");
+if ($pos === false) {
+        preg_match ( "/[^\.\/]+\.[^\.\/]+$/", $fqdn, $domain);
+}
+else {
+        preg_match ( "/[^\.\/]+\.co\.[^\.\/]+$/", $fqdn, $domain);
+}
+$domain_name =  $domain[0];
+
+// Append variables, get variable data
+$keydata = file_get_contents($key_file);
+$key_fullpath = $key_path . "authorized_keys";
+
+// Callback function for WaitFor for cloud servers
+function progress($server) {
+    printf("%s:%-8s %3d%% complete\r",
+        $server->name, $server->status, $server->progress);
+}
+
+// Info function for the lbprogress function
+function info($msg,$p1=NULL,$p2=NULL,$p3=NULL) {
+    printf(" %s\r", sprintf($msg,$p1,$p2,$p3));
+}
+
+// Callback function for WaitFor for cloud load balancers
+function lbprogress($obj) {
+	info('...status: %s', $obj->Status());
+}
+
+// Include function to show DNS record creation status
+function showme($obj) {
+        printf("%s %s %s\n", date('H:i:s'), $obj->Status(), $obj->Name());
+        if ($obj->Status() == 'ERROR') {
+                printf("\tError code [%d] message [%s]\n\tDetails: %s\n",
+                $obj->error->code, $obj->error->message, $obj->error->details);
+        }
+        else if ($obj->Status() == 'COMPLETED') {
+                printf("Done\n");
+        }
+}
+
+// Include necessary libraries
+require('rackspace.php');
+
+// Get credentials and configuration from ~/.rackspace_cloud_credentials
+$inifile = $_SERVER['HOME'] . "/.rackspace_cloud_credentials";
+define('INIFILE', $inifile);
+$ini = parse_ini_file(INIFILE, TRUE);
+if (!$ini) {
+    printf("Unable to load .ini file [%s]\n", INIFILE);
+    exit;
+}
+
+// Authenticate
+print "Authenticating...\n";
+$conn = new OpenCloud\Rackspace(
+     $ini['Identity']['url'],
+     array(
+         'username' => $ini['Identity']['username'],
+         'tenantName' => $ini['Identity']['tenant'],
+         'apiKey' => $ini['Identity']['apiKey']
+     ));
+
+// Create object
+$compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
+$server = $compute->Server();
+
+// Loop and create servers
+print "Creating the servers...\n";
+for ($i=1; $i<=$num_servers; $i++) {
+	$servername = $name_prefix . $i;
+        $server = $compute->Server();
+        $server->AddFile($key_fullpath, $keydata);
+	$server->Create(array(
+    	'name' => $servername,
+    	'flavor' => $compute->Flavor(2),
+    	'image' => $compute->ImageList(TRUE,array('name'=>'CentOS 6.3'))->Next()
+    	));
+	$server->WaitFor('ACTIVE', $timeout, 'progress');
+	print "\nDone\n";
+	$elapsedtime = 0;
+	$server_id = $server->id;
+	$root_pw = $server->adminPass;
+	while ( $server->accessIPv4 == "" ) {
+		$server = $compute->Server($server_id);
+		echo "Waiting for IP address info...\n";
+		sleep(30);
+		$elapsedtime = $elapsedtime + 30;
+		if ( $elapsedtime >= $timeout ) {
+			die("Timeout exceeded. Aborting.\n");
+		}
+	}
+	print $servername . " Info\n";
+	print "IP Address: " . $server->accessIPv4 . "\n";
+	$ip_arr[$i] = $server->accessIPv4;
+	print "Root Password: " . $root_pw . "\n";
+}
+
+// Create load balancer
+echo "Creating Load Balancer...\n";
+$lbservice = $conn->LoadBalancerService($ini['LoadBalancers']['serviceName'], $ini['LoadBalancers']['region']);
+$lb = $lbservice->LoadBalancer();
+$lb->AddVirtualIp('public');
+for ($i=1; $i<=$num_servers; $i++) {
+	$lb->AddNode($ip_arr[$i], $lb_port);
+}
+$response = $lb->Create(array(
+    'name' => $lb_name,
+    'protocol' => $lb_protocol,
+    'port' => $lb_port));
+$lb->WaitFor('ACTIVE', 600, 'lbprogress');
+
+// Display load balancer properties
+echo "\nComplete!\nLoad Balancer ID: " . $lb->id . "\nName: " . $lb->name . "\n";
+
+$lb_id = $lb->id;
+$vip_ip = $lb->virtualIps[0]->address;
+
+// The next section creates the health monitor and error page. These features are created via cURL, which is not a part
+// of the SDK. However, these features, as of this writing are not quite available yet in the SDK
+
+$username = $ini['Identity']['username'];
+$tenantName = $ini['Identity']['tenant'];
+$apiKey = $ini['Identity']['apiKey'];
+$authurl = $ini['Identity']['url'] . "tokens";
+
+// Create array of json data to POST for authentication
+$fields = array(
+                'auth' => array(
+                                'RAX-KSKEY:apiKeyCredentials' => array(
+                                                                        'username' => $username,
+                                                                        'apiKey' => $apiKey
+                                                                        )
+                                )
+                )
+;
+$data_string = json_encode($fields);
+
+//open connection
+$ch = curl_init($authurl);
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+    'Content-Type: application/json',
+    'Content-Length: ' . strlen($data_string))
+);
+
+//execute POST for authentication
+$result = curl_exec($ch);
+$decoded = json_decode($result);
+$token = $decoded->{'access'}->{'token'}->{'id'};
+
+//Clear variables
+unset($ch);
+unset($fields);
+
+echo "Create health check for load balancer...\n";
+
+// Create array of json data to PUT for creating load balancer health check
+$fields = array(
+                'type' => "CONNECT",
+                'delay' => "10",
+                'timeout' => "2",
+                "attemptsBeforeDeactivation" => "2"
+                )
+;
+$data_string = json_encode($fields);
+
+// Create URL endpoint
+$lburl = "https://" . strtolower($ini['LoadBalancers']['region']) . ".loadbalancers.api.rackspacecloud.com/v1.0/" . $tenantName . "/loadbalancers/" . $lb_id . "/healthmonitor";
+
+// Open connection
+$ch = curl_init($lburl);
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+    'X-Auth-Token: ' . $token,
+    'Content-Type: application/json',
+    'Content-Length: ' . strlen($data_string))
+);
+
+// Execure PUT for health monitor
+$result = curl_exec($ch);
+
+//Clear variables
+unset($ch);
+unset($fields);
+
+// Pause 30 seconds so that load balancer is no longer immutable
+sleep(30);
+
+echo "Creating error page for load balancer...\n";
+
+//Get data from html file containing error page
+$error_data = file_get_contents($error_page);
+
+// Create array of json data to PUT for creating load balancer error page
+$fields = array(
+                'errorpage' => array(
+                                'content' => $error_data
+                                )
+                )
+;
+$data_string = json_encode($fields);
+
+// Create URL endpoint
+$lburl = "https://" . strtolower($ini['LoadBalancers']['region']) . ".loadbalancers.api.rackspacecloud.com/v1.0/" . $tenantName . "/loadbalancers/" . $lb_id . "/errorpage";
+
+// Open connection
+$ch = curl_init($lburl);
+curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+    'X-Auth-Token: ' . $token,
+    'Content-Type: application/json',
+    'Content-Length: ' . strlen($data_string))
+);
+
+// Execure PUT for error page
+$result = curl_exec($ch);
+
+// --- Create DNS record ---
+echo "Create DNS record...\n";
+
+// Create array for domain
+$dns = $conn->DNS();
+$dlist = $dns->DomainList(array('name'=>$domain_name));
+
+// If the domain is not found, create it and add FQDN record
+if ($dlist->Size() == 0) {
+        $domain = $dns->Domain(array(
+                'name' => $domain_name,
+                'ttl' => 3600,
+                'emailAddress' => 'ipadmin@stabletransit.com'));
+        echo "Domain '" . $domain_name . "' not found. DNS zone will be created.\n";
+
+        $domain->AddRecord($domain->Record(array(
+                'type' => 'A',
+                'name' => $fqdn,
+                'ttl' => 3600,
+                'data' => $vip_ip)));
+
+        echo "Adding A Record: " . $fqdn . " -> " . $vip_ip . "\n";
+
+        $resp = $domain->Create();
+}
+else {
+        //Otherwise echo a message that the domain is found and add FQDN record
+        echo "Domain '" . $domain_name . "' found.\n";
+        echo "Adding A Record: " . $fqdn . " -> " . $vip_ip . "\n";
+        $domain = $dlist->Next();
+        $new_record = $domain->Record();
+        $resp = $new_record->Create(array(
+                'type' => 'A',
+                'name' => $fqdn,
+                'ttl' => 3600,
+                'data' => $vip_ip));
+}
+
+$resp->WaitFor("COMPLETED", 300, 'showme', 1);
+
+// --- Upload error page to cloud files container ---
+echo "Uploading error page to cloud files container '" . $container_name . "' ...\n";
+
+// Create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
+$objstore = $conn->ObjectStore($ini['ObjectStore']['serviceName'], $ini['ObjectStore']['region']);
+
+// Check to see if container already exists
+$conlist = $objstore->ContainerList(array('prefix'=>$container_name));
+$found = FALSE;
+while($container = $conlist->Next()) {
+        if ( $container->name == $container_name ) {
+                echo "Container '" . $container->name . "' found. Skipping container creation...\n";
+                $found = TRUE;
+                break;
+        }
+}
+
+// If container was not found, then create it
+if ($found === FALSE) {
+        echo "Container not found. Creating container '" . $container_name . "'\n";
+        $container = $objstore->Container();
+        $container->Create(array('name'=>$container_name));
+}
+
+// Upload error page file to container
+echo "Uploading '" . $error_page . "' ...\n";
+$obj = $container->DataObject();
+$obj->Create(array('name' => $error_page),$error_page);
+
+// --- Finished message ---
+echo "\nComplete!\n";
