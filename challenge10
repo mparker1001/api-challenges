@@ -109,6 +109,8 @@ $conn = new OpenCloud\Rackspace(
          'apiKey' => $ini['Identity']['apiKey']
      ));
 
+// --- Create servers ---
+
 // Create object
 $compute = $conn->Compute($ini['Compute']['serviceName'], $ini['Compute']['region']);
 $server = $compute->Server();
@@ -144,6 +146,8 @@ for ($i=1; $i<=$num_servers; $i++) {
 	print "Root Password: " . $root_pw . "\n";
 }
 
+// --- Create and configure load balancers ---
+
 // Create load balancer
 echo "Creating Load Balancer...\n";
 $lbservice = $conn->LoadBalancerService($ini['LoadBalancers']['serviceName'], $ini['LoadBalancers']['region']);
@@ -164,9 +168,11 @@ echo "\nComplete!\nLoad Balancer ID: " . $lb->id . "\nName: " . $lb->name . "\n"
 $lb_id = $lb->id;
 $vip_ip = $lb->virtualIps[0]->address;
 
-// The next section creates the health monitor and error page. These features are created via cURL, which is not a part
-// of the SDK. However, these features, as of this writing are not quite available yet in the SDK
+// The rest of the load balancer section creates the health monitor and error page. These features are
+// created via cURL, which is not a part of the SDK. However these features, as of this writing, do not
+// appear to be available yet in the SDK so we are cURLing as a workaround
 
+// Get configuration variables in ini file
 $username = $ini['Identity']['username'];
 $tenantName = $ini['Identity']['tenant'];
 $apiKey = $ini['Identity']['apiKey'];
@@ -184,7 +190,7 @@ $fields = array(
 ;
 $data_string = json_encode($fields);
 
-//open connection
+// Open connection to auth API endpoint
 $ch = curl_init($authurl);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
 curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
@@ -194,12 +200,12 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
     'Content-Length: ' . strlen($data_string))
 );
 
-//execute POST for authentication
+// POST data to endpoint for authentication and to get token
 $result = curl_exec($ch);
 $decoded = json_decode($result);
 $token = $decoded->{'access'}->{'token'}->{'id'};
 
-//Clear variables
+// Clear variables
 unset($ch);
 unset($fields);
 
@@ -215,10 +221,10 @@ $fields = array(
 ;
 $data_string = json_encode($fields);
 
-// Create URL endpoint
+// Create URL endpoint string for healthmonitor
 $lburl = "https://" . strtolower($ini['LoadBalancers']['region']) . ".loadbalancers.api.rackspacecloud.com/v1.0/" . $tenantName . "/loadbalancers/" . $lb_id . "/healthmonitor";
 
-// Open connection
+// Open connection to load balancer healthmonitor API endpoint
 $ch = curl_init($lburl);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
 curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
@@ -228,10 +234,10 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
     'Content-Length: ' . strlen($data_string))
 );
 
-// Execure PUT for health monitor
+// PUT data to healthmonitor API endpoint
 $result = curl_exec($ch);
 
-//Clear variables
+// Clear variables
 unset($ch);
 unset($fields);
 
@@ -240,7 +246,7 @@ sleep(30);
 
 echo "Creating error page for load balancer...\n";
 
-//Get data from html file containing error page
+// Get data from html file containing error page
 $error_data = file_get_contents($error_page);
 
 // Create array of json data to PUT for creating load balancer error page
@@ -252,10 +258,10 @@ $fields = array(
 ;
 $data_string = json_encode($fields);
 
-// Create URL endpoint
+// Create URL endpoint string for errorpage
 $lburl = "https://" . strtolower($ini['LoadBalancers']['region']) . ".loadbalancers.api.rackspacecloud.com/v1.0/" . $tenantName . "/loadbalancers/" . $lb_id . "/errorpage";
 
-// Open connection
+// Open connection to load balancer errorpage API endpoint
 $ch = curl_init($lburl);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
 curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
@@ -265,10 +271,11 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, array(
     'Content-Length: ' . strlen($data_string))
 );
 
-// Execure PUT for error page
+// PUT data to errorpage API endpoint
 $result = curl_exec($ch);
 
 // --- Create DNS record ---
+
 echo "Creating DNS record...\n";
 
 // Create array for domain
@@ -309,6 +316,7 @@ else {
 $resp->WaitFor("COMPLETED", 300, 'showme', 1);
 
 // --- Upload error page to cloud files container ---
+
 echo "Uploading error page to cloud files container '" . $container_name . "' ...\n";
 
 // Create a Cloud Files (ObjectStore) connection based on configuration in ~/.rackspace_cloud_credentials
